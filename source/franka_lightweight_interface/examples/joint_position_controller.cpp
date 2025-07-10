@@ -33,12 +33,7 @@ int main(int argc, char** argv) {
   while (zmq_config.context->handle() != nullptr) {
     std::string msg;
     if (sockets.receive_bytes(msg)) {
-      auto fields = clproto::unpack_fields(msg.data());
-      if (fields.size() < 2) {
-        std::cerr << "Received message with insufficient fields." << std::endl;
-        continue;
-      }
-      auto joint_state = clproto::decode<state_representation::JointState>(fields.at(1));
+      auto joint_state = clproto::decode<state_representation::JointState>(msg);
       if (target.is_empty()) {
         target = joint_state;
       }

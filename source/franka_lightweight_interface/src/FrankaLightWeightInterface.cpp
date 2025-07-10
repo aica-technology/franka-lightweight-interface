@@ -34,13 +34,14 @@ static std::array<double, 7> default_joint_impedance_values() {
 }
 
 FrankaLightWeightInterface::FrankaLightWeightInterface(
-    std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration zmq_config,
-    std::string prefix)
+    std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
+    communication_interfaces::sockets::ZMQSocketConfiguration wrench_config, std::string prefix)
     : prefix_(std::move(prefix)),
       robot_ip_(std::move(robot_ip)),
       connected_(false),
       shutdown_(false),
-      sockets_(zmq_config),
+      sockets_(state_command_config),
+      wrench_socket_(wrench_config),
       joint_damping_gains_(default_joint_damping_gains()),
       joint_impedance_values_(default_joint_impedance_values()),
       collision_behaviour_(default_collision_behaviour()) {}
@@ -54,6 +55,7 @@ void FrankaLightWeightInterface::init() {
   // create zmq connections with an external controller
   // TODO: find a better way to pass in port number
   sockets_.open();
+  wrench_socket_.open();
 
   if (this->prefix_.empty()) {
     this->prefix_ = "franka_";
@@ -63,13 +65,8 @@ void FrankaLightWeightInterface::init() {
   for (std::size_t j = 0; j < joint_names.size(); ++j) {
     joint_names.at(j) = this->prefix_ + "joint" + std::to_string(j + 1);
   }
-  this->state_.ee_state = CartesianState(this->prefix_ + "ee", this->prefix_ + "base");
-  this->state_.joint_state = JointState(robot_name, joint_names);
-  // this->state_.jacobian =
-  //     state_representation::Jacobian(robot_name, joint_names, this->prefix_ + "ee", this->prefix_ + "base");
-  // this->state_.mass =
-  //     state_representation::Parameter<Eigen::MatrixXd>(this->prefix_ + "mass", Eigen::MatrixXd::Zero(7, 7));
-
+  this->state_ = JointState(robot_name, joint_names);
+  this->wrench_ = CartesianWrench(this->prefix_ + "ee", this->prefix_ + "base");
   this->last_command_ = std::chrono::steady_clock::now();
 }
 
@@ -175,35 +172,36 @@ void FrankaLightWeightInterface::poll_external_command() {
 }
 
 void FrankaLightWeightInterface::publish_robot_state() {
-  std::vector<std::string> encoded_state;
-  encoded_state.emplace_back(clproto::encode(this->state_.ee_state));
-  encoded_state.emplace_back(clproto::encode(this->state_.joint_state));
-  std::string msg;
-  clproto::pack_fields(encoded_state, msg.data());
-  this->sockets_.send_bytes(msg);
+  std::string state_msg = clproto::encode(this->state_);
+  this->sockets_.send_bytes(state_msg);
+  std::string wrench_msg = clproto::encode(this->wrench_);
+  this->wrench_socket_.send_bytes(wrench_msg);
 }
 
 void FrankaLightWeightInterface::read_robot_state(const franka::RobotState& robot_state) {
   // extract cartesian info
-  Eigen::Affine3d eef_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
-  this->state_.ee_state.set_pose(eef_transform.translation(), Eigen::Quaterniond(eef_transform.linear()));
-  this->state_.ee_state.set_wrench(Eigen::MatrixXd::Map(robot_state.O_F_ext_hat_K.data(), 6, 1));
+  // Eigen::Affine3d eef_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+  // this->state_.ee_state.set_pose(eef_transform.translation(), Eigen::Quaterniond(eef_transform.linear()));
+  // this->state_.ee_state.set_wrench(Eigen::MatrixXd::Map(robot_state.O_F_ext_hat_K.data(), 6, 1));
 
   // extract joint info
   assert(robot_state.q.size() == 7);
-  this->state_.joint_state.set_positions(Eigen::VectorXd::Map(robot_state.q.data(), 7));
-  this->state_.joint_state.set_velocities(Eigen::VectorXd::Map(robot_state.dq.data(), 7));
-  this->state_.joint_state.set_torques(Eigen::VectorXd::Map(robot_state.tau_J.data(), 7));
+  this->state_.set_positions(Eigen::VectorXd::Map(robot_state.q.data(), 7));
+  this->state_.set_velocities(Eigen::VectorXd::Map(robot_state.dq.data(), 7));
+  this->state_.set_torques(Eigen::VectorXd::Map(robot_state.tau_J.data(), 7));
 
-  // extract jacobian
-  std::array<double, 42> jacobian_array = this->franka_model_->zeroJacobian(franka::Frame::kEndEffector, robot_state);
-  this->state_.jacobian.set_data(Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data()));
+  // extract estimated wrench
+  this->wrench_.set_wrench(Eigen::MatrixXd::Map(robot_state.O_F_ext_hat_K.data(), 6, 1));
+
+  // // extract jacobian
+  // std::array<double, 42> jacobian_array = this->franka_model_->zeroJacobian(franka::Frame::kEndEffector, robot_state);
+  // this->state_.jacobian.set_data(Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data()));
 
   // std::array<double, 49> current_mass_array = this->franka_model_->mass(robot_state);
   // this->state_.mass.set_value(Eigen::Map<const Eigen::Matrix<double, 7, 7>>(current_mass_array.data()));
 
   // get the twist from jacobian and current joint velocities
-  this->state_.ee_state.set_twist(this->state_.jacobian * this->state_.joint_state.get_velocities());
+  // this->state_.ee_state.set_twist(this->state_.jacobian * this->state_.joint_state.get_velocities());
 }
 
 void FrankaLightWeightInterface::run_state_publisher() {
@@ -303,7 +301,7 @@ void FrankaLightWeightInterface::run_joint_torques_controller() {
 
       std::array<double, 7> torques{};
       Eigen::VectorXd::Map(&torques[0], 7) = this->command_->get_torques().array()
-          - this->joint_damping_gains_ * this->state_.joint_state.get_velocities().array() + coriolis.array();
+          - this->joint_damping_gains_ * this->state_.get_velocities().array() + coriolis.array();
 
       // write the state out to the local socket
       this->publish_robot_state();

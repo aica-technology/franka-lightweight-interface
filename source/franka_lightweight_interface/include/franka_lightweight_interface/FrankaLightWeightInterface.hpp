@@ -11,18 +11,12 @@
 #include <franka/robot.h>
 
 #include <communication_interfaces/sockets/ZMQPublisherSubscriber.hpp>
+#include <communication_interfaces/sockets/ZMQPublisher.hpp>
 #include <state_representation/space/cartesian/CartesianState.hpp>
+#include <state_representation/space/cartesian/CartesianWrench.hpp>
 #include <state_representation/space/joint/JointState.hpp>
-#include <state_representation/space/Jacobian.hpp>
 
 namespace frankalwi {
-
-struct FrankaState {
-  state_representation::CartesianState ee_state;
-  state_representation::JointState joint_state;
-  state_representation::Jacobian jacobian;
-  // state_representation::Mass mass; ///< Mass matrix of the robot
-};
 
 struct CollisionBehaviour {
   std::array<double, 7> ltta;///lower_torque_thresholds_acceleration
@@ -48,9 +42,11 @@ private:
   std::unique_ptr<franka::Model> franka_model_;///< model object of the robot
   bool connected_;
   bool shutdown_;
-  FrankaState state_;
+  state_representation::JointState state_;
+  state_representation::CartesianWrench wrench_;
   std::shared_ptr<state_representation::JointState> command_;
   communication_interfaces::sockets::ZMQPublisherSubscriber sockets_;
+  communication_interfaces::sockets::ZMQPublisher wrench_socket_;
   Eigen::ArrayXd joint_damping_gains_;
   std::array<double, 7> joint_impedance_values_;
   CollisionBehaviour collision_behaviour_;
@@ -66,7 +62,8 @@ public:
    * @param robot_ip ip address of the robot to control
    */
   explicit FrankaLightWeightInterface(
-      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration, std::string prefix);
+      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
+      communication_interfaces::sockets::ZMQSocketConfiguration wrench_config, std::string prefix);
 
   /**
    * @brief Getter of the connected boolean attribute
@@ -228,13 +225,12 @@ inline std::mutex& FrankaLightWeightInterface::get_mutex() {
 }
 
 inline void FrankaLightWeightInterface::print_state() const {
-  std::cout << "Current robot cartesian state:" << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << this->state_.ee_state << std::endl;
-  std::cout << "--------------------" << std::endl;
   std::cout << "Current robot joint state:" << std::endl;
   std::cout << "--------------------" << std::endl;
-  std::cout << this->state_.joint_state << std::endl;
+  std::cout << this->state_ << std::endl;
+  std::cout << "Current estimated EE wrench:" << std::endl;
+  std::cout << "--------------------" << std::endl;
+  std::cout << this->wrench_ << std::endl;
   if (this->command_) {
     std::cout << "--------------------" << std::endl;
     std::cout << "Commanded torque:" << std::endl;

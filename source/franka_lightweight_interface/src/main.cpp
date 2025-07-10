@@ -1,3 +1,4 @@
+#include <communication_interfaces/sockets/ZMQSocket.hpp>
 #include <iostream>
 
 #include "franka_lightweight_interface/FrankaLightWeightInterface.hpp"
@@ -69,13 +70,21 @@ int main(int argc, char** argv) {
   std::string help_message = "Usage: franka_lightweight_interface robot-id prefix ";
   help_message += "[--joint-damping <high|medium|low|off>] [--sensitivity <high|medium|low>] "
                   "[--joint-impedance <high|medium|low>]";
-  communication_interfaces::sockets::ZMQCombinedSocketsConfiguration zmq_config;
-  zmq_config.ip_address = "0.0.0.0";
-  zmq_config.publisher_port = "1601";
-  zmq_config.subscriber_port = "1602";
-  zmq_config.bind_publisher = false;
-  zmq_config.bind_subscriber = false;
-  zmq_config.context = std::make_shared<zmq::context_t>(1);
+  
+  auto context = std::make_shared<zmq::context_t>(1);
+  communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config;
+  state_command_config.ip_address = "0.0.0.0";
+  state_command_config.publisher_port = "1601";
+  state_command_config.subscriber_port = "1602";
+  state_command_config.bind_publisher = false;
+  state_command_config.bind_subscriber = false;
+  state_command_config.context = context;
+
+  communication_interfaces::sockets::ZMQSocketConfiguration wrench_config;
+  wrench_config.ip_address = "0.0.0.0";
+  wrench_config.port = "1603";
+  wrench_config.bind = false;
+  wrench_config.context = context;
 
   std::string robot_ip = "172.16.0.2";
 
@@ -86,8 +95,9 @@ int main(int argc, char** argv) {
   }
   if (atof(argv[1]) == 17) {
     robot_ip = "172.17.0.2";
-    zmq_config.publisher_port = "1701";
-    zmq_config.subscriber_port = "1702";
+    state_command_config.publisher_port = "1701";
+    state_command_config.subscriber_port = "1702";
+    wrench_config.port = "1703";
   } else if (atof(argv[1]) != 16) {
     std::cerr << "This robot is unknown, choose either '16' or '17'." << std::endl << help_message << std::endl;
     return 1;
@@ -98,7 +108,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  FrankaLightWeightInterface flwi(robot_ip, zmq_config, prefix);
+  FrankaLightWeightInterface flwi(robot_ip, state_command_config, wrench_config, prefix);
 
   int provided_options = 0;
   char* option = parse_option(argv, argv + argc, "--joint-damping");
