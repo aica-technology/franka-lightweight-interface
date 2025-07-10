@@ -1,28 +1,38 @@
 #pragma once
 
+#include <chrono>
+#include <eigen3/Eigen/Core>
 #include <iostream>
 #include <mutex>
-#include <thread>
-#include <chrono>
-#include <zmq.h>
 
 #include <franka/duration.h>
 #include <franka/exception.h>
 #include <franka/model.h>
 #include <franka/robot.h>
-#include <network_interfaces/zmq/network.h>
+
+#include <communication_interfaces/sockets/ZMQPublisherSubscriber.hpp>
+#include <state_representation/space/cartesian/CartesianState.hpp>
+#include <state_representation/space/joint/JointState.hpp>
+#include <state_representation/space/Jacobian.hpp>
 
 namespace frankalwi {
 
+struct FrankaState {
+  state_representation::CartesianState ee_state;
+  state_representation::JointState joint_state;
+  state_representation::Jacobian jacobian;
+  // state_representation::Mass mass; ///< Mass matrix of the robot
+};
+
 struct CollisionBehaviour {
-  std::array<double, 7> ltta; ///lower_torque_thresholds_acceleration
-  std::array<double, 7> utta; ///upper_torque_thresholds_acceleration
-  std::array<double, 7> lttn; ///lower_torque_thresholds_nominal
-  std::array<double, 7> uttn; ///upper_torque_thresholds_nominal
-  std::array<double, 6> lfta; ///lower_force_thresholds_acceleration
-  std::array<double, 6> ufta; ///upper_force_thresholds_acceleration
-  std::array<double, 6> lftn; ///lower_force_thresholds_nominal
-  std::array<double, 6> uftn; ///upper_force_thresholds_nominal
+  std::array<double, 7> ltta;///lower_torque_thresholds_acceleration
+  std::array<double, 7> utta;///upper_torque_thresholds_acceleration
+  std::array<double, 7> lttn;///lower_torque_thresholds_nominal
+  std::array<double, 7> uttn;///upper_torque_thresholds_nominal
+  std::array<double, 6> lfta;///lower_force_thresholds_acceleration
+  std::array<double, 6> ufta;///upper_force_thresholds_acceleration
+  std::array<double, 6> lftn;///lower_force_thresholds_nominal
+  std::array<double, 6> uftn;///upper_force_thresholds_nominal
 };
 
 /**
@@ -32,20 +42,15 @@ struct CollisionBehaviour {
  */
 class FrankaLightWeightInterface {
 private:
-  std::string prefix_; ///< prefix of the robot joints
-  std::string robot_ip_; ///< ip of the robot to connect to
-  std::unique_ptr<franka::Robot> franka_robot_; ///< robot object to send command to
-  std::unique_ptr<franka::Model> franka_model_; ///< model object of the robot
+  std::string prefix_;                         ///< prefix of the robot joints
+  std::string robot_ip_;                       ///< ip of the robot to connect to
+  std::unique_ptr<franka::Robot> franka_robot_;///< robot object to send command to
+  std::unique_ptr<franka::Model> franka_model_;///< model object of the robot
   bool connected_;
   bool shutdown_;
-  std::string state_uri_; ///< URI of the socket to connect to for publishing state messages
-  std::string command_uri_; ///< URI of the socket to connect to for receiving command messages
-  ::zmq::context_t zmq_context_;
-  ::zmq::socket_t zmq_publisher_;
-  ::zmq::socket_t zmq_subscriber_;
-  network_interfaces::zmq::StateMessage state_;
-  network_interfaces::zmq::CommandMessage command_;
-  network_interfaces::control_type_t control_type_;
+  FrankaState state_;
+  std::shared_ptr<state_representation::JointState> command_;
+  communication_interfaces::sockets::ZMQPublisherSubscriber sockets_;
   Eigen::ArrayXd joint_damping_gains_;
   std::array<double, 7> joint_impedance_values_;
   CollisionBehaviour collision_behaviour_;
@@ -61,8 +66,7 @@ public:
    * @param robot_ip ip address of the robot to control
    */
   explicit FrankaLightWeightInterface(
-      std::string robot_ip, std::string state_uri, std::string command_uri, std::string prefix
-  );
+      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration, std::string prefix);
 
   /**
    * @brief Getter of the connected boolean attribute
@@ -143,8 +147,7 @@ public:
       const std::array<double, 6>& lower_force_thresholds_acceleration,
       const std::array<double, 6>& upper_force_thresholds_acceleration,
       const std::array<double, 6>& lower_force_thresholds_nominal,
-      const std::array<double, 6>& upper_force_thresholds_nominal
-  );
+      const std::array<double, 6>& upper_force_thresholds_nominal);
 
   /**
    * @brief Set the collision behaviour.
@@ -210,7 +213,6 @@ public:
    * that reads commands from the joint torques subscription
    */
   void run_joint_torques_controller();
-
 };
 
 inline bool FrankaLightWeightInterface::is_connected() const {
@@ -233,10 +235,12 @@ inline void FrankaLightWeightInterface::print_state() const {
   std::cout << "Current robot joint state:" << std::endl;
   std::cout << "--------------------" << std::endl;
   std::cout << this->state_.joint_state << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << "Commanded torque:" << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << this->command_.joint_state.get_torques().transpose() << std::endl;
+  if (this->command_) {
+    std::cout << "--------------------" << std::endl;
+    std::cout << "Commanded torque:" << std::endl;
+    std::cout << "--------------------" << std::endl;
+    std::cout << this->command_->get_torques().transpose() << std::endl;
+  }
   std::cout << "####################" << std::endl;
 }
-}
+}// namespace frankalwi

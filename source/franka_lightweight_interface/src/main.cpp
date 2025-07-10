@@ -2,6 +2,8 @@
 
 #include "franka_lightweight_interface/FrankaLightWeightInterface.hpp"
 
+#include <communication_interfaces/sockets/ZMQPublisherSubscriber.hpp>
+
 using namespace frankalwi;
 
 static void set_joint_damping(const std::string& level, FrankaLightWeightInterface& flwi) {
@@ -67,9 +69,15 @@ int main(int argc, char** argv) {
   std::string help_message = "Usage: franka_lightweight_interface robot-id prefix ";
   help_message += "[--joint-damping <high|medium|low|off>] [--sensitivity <high|medium|low>] "
                   "[--joint-impedance <high|medium|low>]";
+  communication_interfaces::sockets::ZMQCombinedSocketsConfiguration zmq_config;
+  zmq_config.ip_address = "0.0.0.0";
+  zmq_config.publisher_port = "1601";
+  zmq_config.subscriber_port = "1602";
+  zmq_config.bind_publisher = false;
+  zmq_config.bind_subscriber = false;
+  zmq_config.context = std::make_shared<zmq::context_t>(1);
+
   std::string robot_ip = "172.16.0.2";
-  std::string state_uri = "0.0.0.0:1601";
-  std::string command_uri = "0.0.0.0:1602";
 
   if (argc <= 2) {
     std::cerr << "Not enough input arguments. Provide at least the robot number and its prefix." << std::endl
@@ -78,8 +86,8 @@ int main(int argc, char** argv) {
   }
   if (atof(argv[1]) == 17) {
     robot_ip = "172.17.0.2";
-    state_uri = "0.0.0.0:1701";
-    command_uri = "0.0.0.0:1702";
+    zmq_config.publisher_port = "1701";
+    zmq_config.subscriber_port = "1702";
   } else if (atof(argv[1]) != 16) {
     std::cerr << "This robot is unknown, choose either '16' or '17'." << std::endl << help_message << std::endl;
     return 1;
@@ -90,7 +98,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  FrankaLightWeightInterface flwi(robot_ip, state_uri, command_uri, prefix);
+  FrankaLightWeightInterface flwi(robot_ip, zmq_config, prefix);
 
   int provided_options = 0;
   char* option = parse_option(argv, argv + argc, "--joint-damping");
