@@ -52,8 +52,6 @@ void FrankaLightWeightInterface::init() {
   this->franka_model_ = std::make_unique<franka::Model>(this->franka_robot_->loadModel());
   this->connected_ = true;
 
-  // create zmq connections with an external controller
-  // TODO: find a better way to pass in port number
   sockets_.open();
   wrench_socket_.open();
 
@@ -66,7 +64,7 @@ void FrankaLightWeightInterface::init() {
     joint_names.at(j) = this->prefix_ + "joint" + std::to_string(j + 1);
   }
   this->state_ = JointState(robot_name, joint_names);
-  this->wrench_ = CartesianWrench(this->prefix_ + "ee", this->prefix_ + "base");
+  this->wrench_ = CartesianWrench(this->prefix_ + "ee", "world");
   this->last_command_ = std::chrono::steady_clock::now();
 }
 
@@ -140,8 +138,8 @@ void FrankaLightWeightInterface::run_controller() {
       std::cerr << "Controller stopped but the node is still active, restarting..." << std::endl;
       //flush and reset any remaining command messages
       // network_interfaces::zmq::receive(this->command_, this->zmq_subscriber_);
-      this->reset_command();
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      // this->reset_command();
+      // std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   } else {
     throw std::runtime_error("Robot not connected! Call the init function first.");
@@ -152,8 +150,8 @@ void FrankaLightWeightInterface::poll_external_command() {
   std::string msg;
   if (this->sockets_.receive_bytes(msg)) {
     std::shared_ptr<JointState> state;
-    if (auto command_type = clproto::check_message_type(msg);
-        command_type == clproto::MessageType::JOINT_VELOCITIES_MESSAGE) {
+    auto command_type = clproto::check_message_type(msg);
+    if (command_type == clproto::MessageType::JOINT_VELOCITIES_MESSAGE) {
       state = std::make_shared<JointVelocities>(clproto::decode<JointVelocities>(msg));
     } else if (command_type == clproto::MessageType::JOINT_TORQUES_MESSAGE) {
       state = std::make_shared<JointTorques>(clproto::decode<JointTorques>(msg));
@@ -162,6 +160,7 @@ void FrankaLightWeightInterface::poll_external_command() {
       return;
     }
     this->last_command_ = std::chrono::steady_clock::now();
+    // std::cout << *state << std::endl;
     this->command_ = state;
   } else if (
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - this->last_command_)

@@ -88,25 +88,22 @@ int main(int argc, char** argv) {
 
   std::string robot_ip = "172.16.0.2";
 
-  if (argc <= 2) {
-    std::cerr << "Not enough input arguments. Provide at least the robot number and its prefix." << std::endl
-              << help_message << std::endl;
-    return 1;
-  }
-  if (atof(argv[1]) == 17) {
-    robot_ip = "172.17.0.2";
-    state_command_config.publisher_port = "1701";
-    state_command_config.subscriber_port = "1702";
-    wrench_config.port = "1703";
-  } else if (atof(argv[1]) != 16) {
-    std::cerr << "This robot is unknown, choose either '16' or '17'." << std::endl << help_message << std::endl;
-    return 1;
-  }
-  std::string prefix = argv[2];
-  if (prefix.substr(prefix.length() - 1, 1) != "_") {
-    std::cerr << "Please provide a prefix that ends with an underscore." << std::endl << help_message << std::endl;
-    return 1;
-  }
+  // if (argc <= 1) {
+  //   std::cerr << "Not enough input arguments. Provide at least the robot number and its prefix." << std::endl
+  //             << help_message << std::endl;
+  //   return 1;
+  // }
+  // if (atof(argv[1]) == 17) {
+  //   robot_ip = "172.17.0.2";
+  //   state_command_config.publisher_port = "1701";
+  //   state_command_config.subscriber_port = "1702";
+  //   wrench_config.port = "1703";
+  // } else if (atof(argv[1]) != 16) {
+  //   std::cerr << "This robot is unknown, choose either '16' or '17'." << std::endl << help_message << std::endl;
+  //   return 1;
+  // }
+
+  std::string prefix = "panda_";
 
   FrankaLightWeightInterface flwi(robot_ip, state_command_config, wrench_config, prefix);
 
@@ -150,10 +147,10 @@ int main(int argc, char** argv) {
     ++provided_options;
   }
 
-  if (argc != 2 * provided_options + 3) {
-    std::cerr << "Invalid command line arguments." << std::endl << help_message << std::endl;
-    return 1;
-  }
+  // if (argc != 2 * provided_options + 3) {
+  //   std::cerr << "Invalid command line arguments." << std::endl << help_message << std::endl;
+  //   return 1;
+  // }
 
   flwi.init();
   flwi.run_controller();
