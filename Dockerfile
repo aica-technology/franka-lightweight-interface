@@ -5,8 +5,8 @@ COPY --from=ghcr.io/aica-technology/control-libraries:v9.2.0 / /
 RUN sudo apt-get update && sudo apt-get install -y libpoco-dev
 
 WORKDIR /source
-RUN git clone --recursive https://github.com/frankaemika/libfranka
-RUN cd libfranka && git checkout 0.15.0 && git submodule update && mkdir build
+RUN git clone --recursive https://github.com/Swiss-Battery-Technology-Center/libfranka
+RUN cd libfranka && git checkout 5721223445f0c53ef9ec8ee1bea5ee3fc93679d3 && git submodule update && mkdir build
 WORKDIR /source/libfranka/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF .. && cmake --build . && make -j && sudo make install -j && sudo ldconfig
 
