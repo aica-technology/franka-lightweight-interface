@@ -67,9 +67,9 @@ char* parse_option(char** begin, char** end, const std::string& option) {
 int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
 
-  std::string help_message = "Usage: franka_lightweight_interface robot-id prefix ";
-  help_message += "[--joint-damping <high|medium|low|off>] [--sensitivity <high|medium|low>] "
-                  "[--joint-impedance <high|medium|low>]";
+  std::string help_message = "Usage: franka_lightweight_interface ";
+  help_message += "[--prefix <prefix_>] [--joint-damping <high|medium|low|off>] "
+                  "[--sensitivity <high|medium|low>] [--joint-impedance <high|medium|low>]";
   
   auto context = std::make_shared<zmq::context_t>(1);
   communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config;
@@ -108,7 +108,19 @@ int main(int argc, char** argv) {
   FrankaLightWeightInterface flwi(robot_ip, state_command_config, wrench_config, prefix);
 
   int provided_options = 0;
-  char* option = parse_option(argv, argv + argc, "--joint-damping");
+  char* option = parse_option(argv, argv + argc, "--prefix");
+  if (option) {
+    prefix = std::string(option);
+    if (prefix.length() == 0 || !prefix.ends_with("_")) {
+      std::cerr << "Provided prefix '" << prefix << "' does not end with underscore!" << std::endl << help_message
+                << std::endl;
+      return 1;
+    }
+    std::cout << "Using prefix " << prefix << std::endl;
+    ++provided_options;
+  }
+
+  option = parse_option(argv, argv + argc, "--joint-damping");
   if (option) {
     std::string joint_damping = std::string(option);
     if (joint_damping != "off" && joint_damping != "low" && joint_damping != "medium" && joint_damping != "high") {
@@ -120,6 +132,7 @@ int main(int argc, char** argv) {
     set_joint_damping(joint_damping, flwi);
     ++provided_options;
   }
+
 
   option = parse_option(argv, argv + argc, "--sensitivity");
   if (option) {
