@@ -50,6 +50,21 @@ void FrankaLightWeightInterface::init() {
   // create connection to the robot
   this->franka_robot_ = std::make_unique<franka::Robot>(this->robot_ip_);
   this->franka_model_ = std::make_unique<franka::Model>(this->franka_robot_->loadModel());
+  // set load of the robot
+  this->franka_robot_->setLoad(0.48, {0.020978, 0.000052, 0.007896},
+                               {0.001534624, -0.000000812, -0.000016716, -0.000000812, 0.001782393, -0.000001745,
+                                -0.000016716, -0.000001745, 0.000423456});
+
+  this->franka_robot_->setEE(std::array<double, 16>{
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0.1369, 1
+  });
+
+  this->franka_robot_->setCollisionBehavior({50, 50, 50, 50, 50, 50, 50}, {50, 50, 50, 50, 50, 50, 50},
+                                              {50, 50, 50, 50, 50, 50}, {50, 50, 50, 50, 50, 50});
+
   this->connected_ = true;
 
   sockets_.open();
@@ -190,7 +205,7 @@ void FrankaLightWeightInterface::read_robot_state(const franka::RobotState& robo
   this->state_.set_torques(Eigen::VectorXd::Map(robot_state.tau_J.data(), 7));
 
   // extract estimated wrench
-  this->wrench_.set_wrench(Eigen::MatrixXd::Map(robot_state.O_F_ext_hat_K.data(), 6, 1));
+  this->wrench_.set_wrench(-1*Eigen::MatrixXd::Map(robot_state.K_F_ext_hat_K.data(), 6, 1));
 
   // // extract jacobian
   // std::array<double, 42> jacobian_array = this->franka_model_->zeroJacobian(franka::Frame::kEndEffector, robot_state);
