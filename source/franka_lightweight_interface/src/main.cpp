@@ -1,5 +1,7 @@
 #include <iostream>
 
+#include <communication_interfaces/sockets/ZMQPublisherSubscriber.hpp>
+
 #include "franka_lightweight_interface/FrankaLightWeightInterface.hpp"
 
 using namespace frankalwi;
@@ -32,22 +34,19 @@ static void set_collision_behaviour(const std::string& level, FrankaLightWeightI
         {{80.0, 80.0, 72.0, 72.0, 64.0, 56, 48}}, {{80.0, 80.0, 72.0, 72.0, 64.0, 56, 48}},
         {{80.0, 80.0, 72.0, 72.0, 64.0, 56, 48}}, {{80.0, 80.0, 72.0, 72.0, 64.0, 56, 48}},
         {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}}, {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}},
-        {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}}, {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}}
-    );
+        {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}}, {{80.0, 80.0, 80.0, 100.0, 100.0, 100.0}});
   } else if (level == "medium") {
     flwi.set_collision_behaviour(
         {{40.0, 40.0, 36.0, 36.0, 32.0, 28.0, 24.0}}, {{40.0, 40.0, 36.0, 36.0, 32.0, 28.0, 24.0}},
         {{40.0, 40.0, 36.0, 36.0, 32.0, 28.0, 24.0}}, {{40.0, 40.0, 36.0, 36.0, 32.0, 28.0, 24.0}},
         {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}}, {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}},
-        {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}}, {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}}
-    );
+        {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}}, {{40.0, 40.0, 40.0, 50.0, 50.0, 50.0}});
   } else if (level == "high") {
     flwi.set_collision_behaviour(
         {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}}, {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}},
         {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}}, {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}},
         {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}, {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}},
-        {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}, {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}
-    );
+        {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}, {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}});
   }
 }
 
@@ -64,41 +63,53 @@ char* parse_option(char** begin, char** end, const std::string& option) {
 int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
 
-  std::string help_message = "Usage: franka_lightweight_interface robot-id prefix ";
-  help_message += "[--joint-damping <high|medium|low|off>] [--sensitivity <high|medium|low>] "
-                  "[--joint-impedance <high|medium|low>]";
-  std::string robot_ip = "172.16.0.2";
-  std::string state_uri = "0.0.0.0:1601";
-  std::string command_uri = "0.0.0.0:1602";
+  std::string help_message = "Usage: franka_lightweight_interface <robot_ip>";
+  help_message += "[--prefix <prefix>] [--joint-damping <high|medium|low|off>] "
+                  "[--sensitivity <high|medium|low>] [--joint-impedance <high|medium|low>]";
 
-  if (argc <= 2) {
-    std::cerr << "Not enough input arguments. Provide at least the robot number and its prefix." << std::endl
-              << help_message << std::endl;
-    return 1;
-  }
-  if (atof(argv[1]) == 17) {
-    robot_ip = "172.17.0.2";
-    state_uri = "0.0.0.0:1701";
-    command_uri = "0.0.0.0:1702";
-  } else if (atof(argv[1]) != 16) {
-    std::cerr << "This robot is unknown, choose either '16' or '17'." << std::endl << help_message << std::endl;
-    return 1;
-  }
-  std::string prefix = argv[2];
-  if (prefix.substr(prefix.length() - 1, 1) != "_") {
-    std::cerr << "Please provide a prefix that ends with an underscore." << std::endl << help_message << std::endl;
-    return 1;
-  }
+  auto context = std::make_shared<zmq::context_t>(1);
+  communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config;
+  state_command_config.ip_address = "0.0.0.0";
+  state_command_config.publisher_port = "1601";
+  state_command_config.subscriber_port = "1602";
+  state_command_config.bind_publisher = false;
+  state_command_config.bind_subscriber = false;
+  state_command_config.context = context;
 
-  FrankaLightWeightInterface flwi(robot_ip, state_uri, command_uri, prefix);
+  communication_interfaces::sockets::ZMQSocketConfiguration wrench_config;
+  wrench_config.ip_address = "0.0.0.0";
+  wrench_config.port = "1603";
+  wrench_config.bind = false;
+  wrench_config.context = context;
+
+  if (argc <= 1) {
+    std::cerr << "Not enough input arguments. Provide at least the robot IP." << std::endl << help_message << std::endl;
+    return 1;
+  }
+  std::string robot_ip = std::string(argv[1]);
+  std::string prefix = "panda_";
 
   int provided_options = 0;
-  char* option = parse_option(argv, argv + argc, "--joint-damping");
+  char* option = parse_option(argv, argv + argc, "--prefix");
+  if (option) {
+    prefix = std::string(option);
+    if (prefix.length() == 0 || !prefix.ends_with("_")) {
+      std::cerr << "Provided prefix '" << prefix << "' does not end with underscore!" << std::endl
+                << help_message << std::endl;
+      return 1;
+    }
+    std::cout << "Using prefix " << prefix << std::endl;
+    ++provided_options;
+  }
+
+  FrankaLightWeightInterface flwi(robot_ip, state_command_config, wrench_config, prefix);
+
+  option = parse_option(argv, argv + argc, "--joint-damping");
   if (option) {
     std::string joint_damping = std::string(option);
     if (joint_damping != "off" && joint_damping != "low" && joint_damping != "medium" && joint_damping != "high") {
-      std::cerr << "Provide one of (off, low, medium, high) for option --joint-damping" << std::endl << help_message
-                << std::endl;
+      std::cerr << "Provide one of (off, low, medium, high) for option --joint-damping" << std::endl
+                << help_message << std::endl;
       return 1;
     }
     std::cout << "Using joint damping level " << joint_damping << std::endl;
@@ -110,8 +121,8 @@ int main(int argc, char** argv) {
   if (option) {
     std::string collision_sensitivity = std::string(option);
     if (collision_sensitivity != "low" && collision_sensitivity != "medium" && collision_sensitivity != "high") {
-      std::cerr << "Provide one of (low, medium, high) for option --sensitivity" << std::endl << help_message
-                << std::endl;
+      std::cerr << "Provide one of (low, medium, high) for option --sensitivity" << std::endl
+                << help_message << std::endl;
       return 1;
     }
     std::cout << "Using collision sensitivity level " << collision_sensitivity << std::endl;
@@ -123,8 +134,8 @@ int main(int argc, char** argv) {
   if (option) {
     std::string joint_impedance = std::string(option);
     if (joint_impedance != "low" && joint_impedance != "medium" && joint_impedance != "high") {
-      std::cerr << "Provide one of (low, medium, high) for option --joint-impedance" << std::endl << help_message
-                << std::endl;
+      std::cerr << "Provide one of (low, medium, high) for option --joint-impedance" << std::endl
+                << help_message << std::endl;
       return 1;
     }
     std::cout << "Using joint impedance level " << joint_impedance << std::endl;
@@ -132,7 +143,7 @@ int main(int argc, char** argv) {
     ++provided_options;
   }
 
-  if (argc != 2 * provided_options + 3) {
+  if (argc != 2 * provided_options + 2) {
     std::cerr << "Invalid command line arguments." << std::endl << help_message << std::endl;
     return 1;
   }
