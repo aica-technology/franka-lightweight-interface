@@ -76,12 +76,6 @@ int main(int argc, char** argv) {
   state_command_config.bind_subscriber = false;
   state_command_config.context = context;
 
-  communication_interfaces::sockets::ZMQSocketConfiguration wrench_config;
-  wrench_config.ip_address = "0.0.0.0";
-  wrench_config.port = "1603";
-  wrench_config.bind = false;
-  wrench_config.context = context;
-
   if (argc <= 1) {
     std::cerr << "Not enough input arguments. Provide at least the robot IP." << std::endl << help_message << std::endl;
     return 1;
@@ -102,7 +96,7 @@ int main(int argc, char** argv) {
     ++provided_options;
   }
 
-  FrankaLightWeightInterface flwi(robot_ip, state_command_config, wrench_config, prefix);
+  FrankaLightWeightInterface flwi(robot_ip, state_command_config, prefix);
 
   option = parse_option(argv, argv + argc, "--joint-damping");
   if (option) {
