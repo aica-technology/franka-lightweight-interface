@@ -63,7 +63,7 @@ char* parse_option(char** begin, char** end, const std::string& option) {
 int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
 
-  std::string help_message = "Usage: franka_lightweight_interface <robot_ip>";
+  std::string help_message = "Usage: franka_lightweight_interface <robot_ip> ";
   help_message += "[--prefix <prefix>] [--joint-damping <high|medium|low|off>] "
                   "[--sensitivity <high|medium|low>] [--joint-impedance <high|medium|low>]";
 
@@ -82,22 +82,21 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::string robot_ip = std::string(argv[1]);
-  std::string prefix = "panda_";
+
+  FrankaLightWeightInterface flwi;
+  std::string prefix = "";
 
   int provided_options = 0;
   char* option = parse_option(argv, argv + argc, "--prefix");
   if (option) {
     prefix = std::string(option);
-    if (prefix.length() == 0 || !prefix.ends_with("_")) {
-      std::cerr << "Provided prefix '" << prefix << "' does not end with underscore!" << std::endl
-                << help_message << std::endl;
+    if (prefix.length() == 0) {
+      std::cerr << "Provided prefix is empty!" << std::endl << help_message << std::endl;
       return 1;
     }
     std::cout << "Using prefix " << prefix << std::endl;
     ++provided_options;
   }
-
-  FrankaLightWeightInterface flwi(robot_ip, state_command_config, prefix);
 
   option = parse_option(argv, argv + argc, "--joint-damping");
   if (option) {
@@ -143,7 +142,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  flwi.init();
+  flwi.init(robot_ip, state_command_config, prefix);
   flwi.run_controller();
   return 0;
 }

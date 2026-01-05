@@ -28,33 +28,30 @@ static std::array<double, 7> default_joint_impedance_values() {
   return {2000, 2000, 2000, 1500, 1500, 1000, 1000};
 }
 
-FrankaLightWeightInterface::FrankaLightWeightInterface(
-    std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
-    std::string prefix)
-    : prefix_(std::move(prefix)),
-      robot_ip_(std::move(robot_ip)),
-      connected_(false),
+FrankaLightWeightInterface::FrankaLightWeightInterface()
+    : connected_(false),
       shutdown_(false),
-      sockets_(state_command_config),
       joint_damping_gains_(default_joint_damping_gains()),
       joint_impedance_values_(default_joint_impedance_values()),
       collision_behaviour_(default_collision_behaviour()) {}
 
-void FrankaLightWeightInterface::init() {
+void FrankaLightWeightInterface::init(
+    std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
+    std::string prefix) {
   // create connection to the robot
-  this->franka_robot_ = std::make_unique<franka::Robot>(this->robot_ip_);
+  this->franka_robot_ = std::make_unique<franka::Robot>(robot_ip);
   this->franka_model_ = std::make_unique<franka::Model>(this->franka_robot_->loadModel());
 
   this->connected_ = true;
 
-  sockets_.open();
+  this->sockets_ = std::make_shared<communication_interfaces::sockets::ZMQPublisherSubscriber>(state_command_config);
+  this->sockets_->open();
 
-  std::string robot_name = this->prefix_.substr(0, this->prefix_.length() - 1);
   std::vector<std::string> joint_names(7);
   for (std::size_t j = 0; j < joint_names.size(); ++j) {
-    joint_names.at(j) = this->prefix_ + "joint" + std::to_string(j + 1);
+    joint_names.at(j) = prefix + "joint" + std::to_string(j + 1);
   }
-  this->state_ = JointState(robot_name, joint_names);
+  this->state_ = JointState("franka", joint_names);
   this->last_command_ = std::chrono::steady_clock::now();
 }
 
@@ -132,7 +129,7 @@ void FrankaLightWeightInterface::run_controller() {
 
 void FrankaLightWeightInterface::poll_external_command() {
   std::string msg;
-  if (this->sockets_.receive_bytes(msg)) {
+  if (this->sockets_->receive_bytes(msg)) {
     std::shared_ptr<JointState> state;
     auto command_type = clproto::check_message_type(msg);
     if (command_type == clproto::MessageType::JOINT_VELOCITIES_MESSAGE) {
@@ -160,7 +157,7 @@ void FrankaLightWeightInterface::read_and_publish_robot_state(const franka::Robo
   this->state_.set_torques(Eigen::VectorXd::Map(robot_state.tau_J.data(), 7));
 
   std::string state_msg = clproto::encode(this->state_);
-  this->sockets_.send_bytes(state_msg);
+  this->sockets_->send_bytes(state_msg);
 }
 
 void FrankaLightWeightInterface::run_state_publisher() {

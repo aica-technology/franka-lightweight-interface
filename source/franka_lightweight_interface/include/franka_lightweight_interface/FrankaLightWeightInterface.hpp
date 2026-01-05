@@ -32,11 +32,8 @@ class FrankaLightWeightInterface {
 public:
   /**
    * @brief Constructor for the FrankaLightWeightInterface class
-   * @param robot_ip ip address of the robot to control
    */
-  explicit FrankaLightWeightInterface(
-      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
-      std::string prefix);
+  explicit FrankaLightWeightInterface();
 
   /**
    * @brief Set the joint damping gains.
@@ -121,7 +118,9 @@ public:
   /**
    * @brief Initialize the connection to the robot
    */
-  void init();
+  void init(
+      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
+      std::string prefix);
 
   /**
    * @brief Threaded function that run a controller based on the value in the active_controller enumeration
@@ -145,28 +144,24 @@ private:
   void run_state_publisher();
 
   /**
-   * @brief Run the joint velocities controller
-   * that reads commands from the joint velocities subscription
+   * @brief Run the joint velocities controller that reads commands from the joint velocities subscription
    */
   void run_joint_velocities_controller();
 
   /**
-   * @brief Run the joint torques controller
-   * that reads commands from the joint torques subscription
+   * @brief Run the joint torques controller that reads commands from the joint torques subscription
    */
   void run_joint_torques_controller();
 
   void print_state() const;
 
-  std::string prefix_;                         ///< prefix of the robot joints
-  std::string robot_ip_;                       ///< ip of the robot to connect to
-  std::unique_ptr<franka::Robot> franka_robot_;///< robot object to send command to
-  std::unique_ptr<franka::Model> franka_model_;///< model object of the robot
+  std::unique_ptr<franka::Robot> franka_robot_;
+  std::unique_ptr<franka::Model> franka_model_;
   bool connected_;
   bool shutdown_;
   state_representation::JointState state_;
   std::shared_ptr<state_representation::JointState> command_;
-  communication_interfaces::sockets::ZMQPublisherSubscriber sockets_;
+  std::shared_ptr<communication_interfaces::sockets::ZMQPublisherSubscriber> sockets_;
   Eigen::ArrayXd joint_damping_gains_;
   std::array<double, 7> joint_impedance_values_;
   CollisionBehaviour collision_behaviour_;
