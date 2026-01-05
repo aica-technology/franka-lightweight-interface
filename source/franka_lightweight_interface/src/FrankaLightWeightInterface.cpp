@@ -103,6 +103,7 @@ void FrankaLightWeightInterface::run_controller() {
           std::cout << "Starting state publisher..." << std::endl;
           this->run_state_publisher();
         } else {
+          // TODO: make switch case and add position control
           if (this->command_->get_type() == StateType::JOINT_VELOCITIES) {
             std::cout << "Starting joint velocity controller..." << std::endl;
             this->run_joint_velocities_controller();
