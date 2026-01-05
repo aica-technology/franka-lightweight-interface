@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
 
   auto context = std::make_shared<zmq::context_t>(1);
   communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config;
+  // TODO: parse options
   state_command_config.ip_address = "0.0.0.0";
   state_command_config.publisher_port = "1601";
   state_command_config.subscriber_port = "1602";
