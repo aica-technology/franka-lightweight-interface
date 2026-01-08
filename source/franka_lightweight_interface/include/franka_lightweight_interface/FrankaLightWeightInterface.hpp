@@ -1,28 +1,26 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 #include <mutex>
-#include <thread>
-#include <chrono>
-#include <zmq.h>
 
-#include <franka/duration.h>
-#include <franka/exception.h>
 #include <franka/model.h>
 #include <franka/robot.h>
-#include <network_interfaces/zmq/network.h>
+
+#include <communication_interfaces/sockets/ZMQPublisherSubscriber.hpp>
+#include <state_representation/space/joint/JointState.hpp>
 
 namespace frankalwi {
 
 struct CollisionBehaviour {
-  std::array<double, 7> ltta; ///lower_torque_thresholds_acceleration
-  std::array<double, 7> utta; ///upper_torque_thresholds_acceleration
-  std::array<double, 7> lttn; ///lower_torque_thresholds_nominal
-  std::array<double, 7> uttn; ///upper_torque_thresholds_nominal
-  std::array<double, 6> lfta; ///lower_force_thresholds_acceleration
-  std::array<double, 6> ufta; ///upper_force_thresholds_acceleration
-  std::array<double, 6> lftn; ///lower_force_thresholds_nominal
-  std::array<double, 6> uftn; ///upper_force_thresholds_nominal
+  std::array<double, 7> ltta;///lower_torque_thresholds_acceleration
+  std::array<double, 7> utta;///upper_torque_thresholds_acceleration
+  std::array<double, 7> lttn;///lower_torque_thresholds_nominal
+  std::array<double, 7> uttn;///upper_torque_thresholds_nominal
+  std::array<double, 6> lfta;///lower_force_thresholds_acceleration
+  std::array<double, 6> ufta;///upper_force_thresholds_acceleration
+  std::array<double, 6> lftn;///lower_force_thresholds_nominal
+  std::array<double, 6> uftn;///upper_force_thresholds_nominal
 };
 
 /**
@@ -31,56 +29,11 @@ struct CollisionBehaviour {
  *
  */
 class FrankaLightWeightInterface {
-private:
-  std::string prefix_; ///< prefix of the robot joints
-  std::string robot_ip_; ///< ip of the robot to connect to
-  std::unique_ptr<franka::Robot> franka_robot_; ///< robot object to send command to
-  std::unique_ptr<franka::Model> franka_model_; ///< model object of the robot
-  bool connected_;
-  bool shutdown_;
-  std::string state_uri_; ///< URI of the socket to connect to for publishing state messages
-  std::string command_uri_; ///< URI of the socket to connect to for receiving command messages
-  ::zmq::context_t zmq_context_;
-  ::zmq::socket_t zmq_publisher_;
-  ::zmq::socket_t zmq_subscriber_;
-  network_interfaces::zmq::StateMessage state_;
-  network_interfaces::zmq::CommandMessage command_;
-  network_interfaces::control_type_t control_type_;
-  Eigen::ArrayXd joint_damping_gains_;
-  std::array<double, 7> joint_impedance_values_;
-  CollisionBehaviour collision_behaviour_;
-  std::chrono::steady_clock::time_point last_command_;
-  std::chrono::milliseconds command_timeout_ = std::chrono::milliseconds(500);
-  std::mutex mutex_;
-
-  void print_state() const;
-
 public:
   /**
    * @brief Constructor for the FrankaLightWeightInterface class
-   * @param robot_ip ip address of the robot to control
    */
-  explicit FrankaLightWeightInterface(
-      std::string robot_ip, std::string state_uri, std::string command_uri, std::string prefix
-  );
-
-  /**
-   * @brief Getter of the connected boolean attribute
-   * @return the value of the connected attribute
-   */
-  bool is_connected() const;
-
-  /**
-   * @brief Getter of the shutdown boolean attribute
-   * @return the value of the shutdown attribute
-   */
-  bool is_shutdown() const;
-
-  /**
-   * Getter of the mutex attribute
-   * @return the mutex attribute
-   */
-  std::mutex& get_mutex();
+  explicit FrankaLightWeightInterface();
 
   /**
    * @brief Set the joint damping gains.
@@ -143,8 +96,7 @@ public:
       const std::array<double, 6>& lower_force_thresholds_acceleration,
       const std::array<double, 6>& upper_force_thresholds_acceleration,
       const std::array<double, 6>& lower_force_thresholds_nominal,
-      const std::array<double, 6>& upper_force_thresholds_nominal
-  );
+      const std::array<double, 6>& upper_force_thresholds_nominal);
 
   /**
    * @brief Set the collision behaviour.
@@ -166,33 +118,25 @@ public:
   /**
    * @brief Initialize the connection to the robot
    */
-  void init();
-
-  /**
-   * @brief Reset the commanded state variable derivatives to zero (twists, accelerations and torques).
-   */
-  void reset_command();
+  void init(
+      std::string robot_ip, communication_interfaces::sockets::ZMQCombinedSocketsConfiguration state_command_config,
+      std::string prefix);
 
   /**
    * @brief Threaded function that run a controller based on the value in the active_controller enumeration
    */
   void run_controller();
 
+private:
   /**
    * @brief Poll the ZMQ socket subscription for a new joint torque command from an external controller
    */
   void poll_external_command();
 
   /**
-  * @brief Publish robot state to the ZMQ socket for an external controller or observer to receive
+  * @brief Read and publish robot state to the ZMQ socket for an external controller or observer to receive
   */
-  void publish_robot_state();
-
-  /**
-   * @brief Read the robot state and update the published elements
-   * @param robot_state the Franka robot state to read and get velues from
-   */
-  void read_robot_state(const franka::RobotState& robot_state);
+  void read_and_publish_robot_state(const franka::RobotState& robot_state);
 
   /**
    * @brief Read and publish the robot state while no control commands are received
@@ -200,43 +144,42 @@ public:
   void run_state_publisher();
 
   /**
-   * @brief Run the joint velocities controller
-   * that reads commands from the joint velocities subscription
+   * @brief Run the joint velocities controller that reads commands from the joint velocities subscription
    */
   void run_joint_velocities_controller();
 
   /**
-   * @brief Run the joint torques controller
-   * that reads commands from the joint torques subscription
+   * @brief Run the joint torques controller that reads commands from the joint torques subscription
    */
   void run_joint_torques_controller();
 
+  void print_state() const;
+
+  std::unique_ptr<franka::Robot> franka_robot_;
+  std::unique_ptr<franka::Model> franka_model_;
+  bool connected_;
+  bool shutdown_;
+  state_representation::JointState state_;
+  std::shared_ptr<state_representation::JointState> command_;
+  std::shared_ptr<communication_interfaces::sockets::ZMQPublisherSubscriber> sockets_;
+  Eigen::ArrayXd joint_damping_gains_;
+  std::array<double, 7> joint_impedance_values_;
+  CollisionBehaviour collision_behaviour_;
+  std::chrono::steady_clock::time_point last_command_;
+  std::chrono::milliseconds command_timeout_ = std::chrono::milliseconds(500);
+  std::mutex mutex_;
 };
 
-inline bool FrankaLightWeightInterface::is_connected() const {
-  return this->connected_;
-}
-
-inline bool FrankaLightWeightInterface::is_shutdown() const {
-  return this->shutdown_;
-}
-
-inline std::mutex& FrankaLightWeightInterface::get_mutex() {
-  return this->mutex_;
-}
-
 inline void FrankaLightWeightInterface::print_state() const {
-  std::cout << "Current robot cartesian state:" << std::endl;
+  std::cout << "Joint state:" << std::endl;
   std::cout << "--------------------" << std::endl;
-  std::cout << this->state_.ee_state << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << "Current robot joint state:" << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << this->state_.joint_state << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << "Commanded torque:" << std::endl;
-  std::cout << "--------------------" << std::endl;
-  std::cout << this->command_.joint_state.get_torques().transpose() << std::endl;
+  std::cout << this->state_ << std::endl;
+  if (this->command_) {
+    std::cout << "--------------------" << std::endl;
+    std::cout << "Command:" << std::endl;
+    std::cout << "--------------------" << std::endl;
+    std::cout << this->command_ << std::endl;
+  }
   std::cout << "####################" << std::endl;
 }
-}
+}// namespace frankalwi
